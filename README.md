@@ -2,7 +2,7 @@
 
 This app pulls data from the excellent [ESPresense-companion](https://github.com/ESPresense/ESPresense-companion) and renders a fully rotatable, zoomable 3D model complete with objects representing where your objects are located.
 
-[image]
+https://github.com/hdurdle/espc3d/assets/4083861/1ccdaf76-23c7-48ed-a2d3-bef51fb2ff82
 
 I'd never looked at Threejs before this, so you'll forgive my exuberant bloom settings!
 
