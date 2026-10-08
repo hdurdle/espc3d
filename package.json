@@ -12,7 +12,7 @@
     "format:check": "prettier --check ."
   },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22"
   },
   "author": "Howard Durdle",
   "license": "MIT",

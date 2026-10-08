@@ -14,6 +14,7 @@ I'd never looked at Threejs before this, so you'll forgive my exuberant bloom se
 - Colours, bloom, camera angle and rotation speed are all set in one file, [`public/config.js`](public/config.js)
 - Window resizing works, animation runs at the same speed on any refresh rate, and room outlines are fully closed
 - The server no longer crashes on a malformed MQTT message, and keeps retrying if the companion API isn't up yet
+- Floorplan edits in the companion appear in open browsers within 5 minutes, without restarting
 - MQTT over TLS is used when the companion config has `ssl` enabled
 - three.js is bundled with the app, so the browser no longer needs internet access
 - The Docker image has a health check and shuts down cleanly
@@ -34,6 +35,7 @@ The Node server loads the config from the ESPresense-companion API. That config 
 - subscribes to `espresense/companion/+/attributes` on MQTT to receive device positions, over TLS if the companion config has `ssl` enabled
 - pushes the latest positions to the browser over server-sent events (`/updates`), at most once a second
 - drops devices that haven't reported for `ESPC3D_TRACKER_TTL` seconds
+- re-checks the companion config every `ESPC3D_CONFIG_REFRESH` seconds, redrawing the model in open browsers if the floorplan changed and reconnecting MQTT if its settings changed
 
 ### A note on credentials
 
@@ -43,17 +45,18 @@ My first version of this ran entirely in the browser and used websockets to get 
 
 ### Environment variables
 
-| Variable             | Default  | Description                                                                                   |
-| -------------------- | -------- | --------------------------------------------------------------------------------------------- |
-| `ESPC3D_API`         | required | Full URL of the ESPresense-companion API, e.g. `http://192.168.1.10:8267/api`                 |
-| `ESPC3D_PORT`        | `3001`   | Port to listen on                                                                             |
-| `ESPC3D_TRACKER_TTL` | `600`    | Seconds without an update before a device is removed from the view. `0` keeps devices forever |
+| Variable                | Default  | Description                                                                                   |
+| ----------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| `ESPC3D_API`            | required | Full URL of the ESPresense-companion API, e.g. `http://192.168.1.10:8267/api`                 |
+| `ESPC3D_PORT`           | `3001`   | Port to listen on                                                                             |
+| `ESPC3D_TRACKER_TTL`    | `600`    | Seconds without an update before a device is removed from the view. `0` keeps devices forever |
+| `ESPC3D_CONFIG_REFRESH` | `300`    | Seconds between checks for floorplan or MQTT changes in the companion config. `0` disables    |
 
 If you run ESPresense-companion in Docker, its API is on port 8267. I don't run it as an HA add-on so can't speak to connecting to that.
 
 ### Node
 
-Requires Node 20.11 or later.
+Requires Node 22 or later.
 
 ```sh
 npm install

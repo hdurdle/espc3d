@@ -1,12 +1,13 @@
 import path from "node:path";
 import express from "express";
 import mqtt from "mqtt";
-import { loadCompanionConfig } from "./server/config.js";
+import { fetchCompanionConfig, loadCompanionConfig } from "./server/config.js";
 import { TrackerStore } from "./server/trackers.js";
 
 const PORT = Number(process.env.ESPC3D_PORT) || 3001;
 const COMPANION_API = process.env.ESPC3D_API;
 const TRACKER_TTL_SECONDS = Number(process.env.ESPC3D_TRACKER_TTL ?? 600);
+const CONFIG_REFRESH_SECONDS = Number(process.env.ESPC3D_CONFIG_REFRESH ?? 300);
 
 const BROADCAST_THROTTLE_MS = 1000; // at most one push to browsers per second
 const HEARTBEAT_MS = 25_000; // keeps idle streams open through proxies
@@ -22,11 +23,22 @@ const trackers = new TrackerStore(TRACKER_TTL_SECONDS * 1000);
 const sseClients = new Set();
 let floors = null;
 let mqttClient = null;
+let mqttSettings = null;
 
 // --- HTTP ---
 
 const app = express();
 
+app.get("/healthz", (req, res) => {
+  const healthy = floors !== null && mqttClient?.connected === true;
+  res.status(healthy ? 200 : 503).json({ config: floors !== null, mqtt: mqttClient?.connected ?? false });
+});
+
+// three.js is served from node_modules so the app works without internet access
+app.use("/vendor/three", express.static(path.join(import.meta.dirname, "node_modules", "three")));
+app.use(express.static(path.join(import.meta.dirname, "public")));
+
+// Logged after the routes above so health checks and static files don't flood the log
 app.use((req, res, next) => {
   console.log(
     new Date().toISOString(),
@@ -53,15 +65,6 @@ app.get("/updates", (req, res) => {
   req.on("close", () => sseClients.delete(res));
 });
 
-app.get("/healthz", (req, res) => {
-  const healthy = floors !== null && mqttClient?.connected === true;
-  res.status(healthy ? 200 : 503).json({ config: floors !== null, mqtt: mqttClient?.connected ?? false });
-});
-
-// three.js is served from node_modules so the app works without internet access
-app.use("/vendor/three", express.static(path.join(import.meta.dirname, "node_modules", "three")));
-app.use(express.static(path.join(import.meta.dirname, "public")));
-
 const server = app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 // --- Server-sent events ---
@@ -71,6 +74,15 @@ let broadcastTimer = null;
 
 function sendSnapshot(res) {
   res.write(`id: ${++eventId}\ndata: ${JSON.stringify(trackers.snapshot())}\n\n`);
+}
+
+function broadcastFloors() {
+  const event = `id: ${++eventId}
+event: floors
+data: ${JSON.stringify(floors)}
+
+`;
+  for (const res of sseClients) res.write(event);
 }
 
 function scheduleBroadcast() {
@@ -102,7 +114,7 @@ function connectMqtt({ host, port, ssl, username, password }) {
       if (err) console.error("MQTT subscribe failed:", err.message);
     });
   });
-  client.on("error", (err) => console.error("MQTT error:", err.message));
+  client.on("error", (err) => console.error("MQTT error:", err.message || err.code || String(err)));
 
   // Topic is espresense/companion/<device id>/attributes
   client.on("message", (topic, message) => {
@@ -118,12 +130,45 @@ function connectMqtt({ host, port, ssl, username, password }) {
   return client;
 }
 
+// --- Companion config ---
+
+/**
+ * Applies a freshly loaded companion config: browsers are sent the new
+ * floorplan if it changed, and MQTT reconnects if its settings changed.
+ */
+function applyConfig(config) {
+  if (JSON.stringify(config.floors) !== JSON.stringify(floors)) {
+    if (floors) console.log("Floorplan changed, updating browsers");
+    floors = config.floors;
+    broadcastFloors();
+  }
+  if (JSON.stringify(config.mqtt) !== JSON.stringify(mqttSettings)) {
+    if (mqttSettings) console.log("MQTT settings changed, reconnecting");
+    mqttClient?.end();
+    mqttSettings = config.mqtt;
+    mqttClient = connectMqtt(mqttSettings);
+  }
+}
+
+let configRefresher = null;
+if (CONFIG_REFRESH_SECONDS > 0) {
+  configRefresher = setInterval(async () => {
+    if (!floors) return; // still waiting for the first load
+    try {
+      applyConfig(await fetchCompanionConfig(COMPANION_API));
+    } catch (error) {
+      console.error(`Config refresh failed, keeping current config: ${error.message}`);
+    }
+  }, CONFIG_REFRESH_SECONDS * 1000);
+}
+
 // --- Startup and shutdown ---
 
 function shutdown(signal) {
   console.log(`${signal} received, shutting down`);
   clearInterval(heartbeat);
   clearInterval(pruner);
+  clearInterval(configRefresher);
   clearTimeout(broadcastTimer);
   for (const res of sseClients) res.end();
   mqttClient?.end();
@@ -133,6 +178,4 @@ function shutdown(signal) {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-const config = await loadCompanionConfig(COMPANION_API);
-floors = config.floors;
-mqttClient = connectMqtt(config.mqtt);
+applyConfig(await loadCompanionConfig(COMPANION_API));

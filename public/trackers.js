@@ -8,11 +8,17 @@ const sphereMaterials = CONFIG.trackerColors.map((color) => new THREE.MeshBasicM
 /** Glowing, labelled spheres for each tracked device, kept in sync with server snapshots. */
 export class TrackerLayer {
   #parent;
-  #trackers = new Map(); // device name -> { group, sphere }
+  #trackers = new Map(); // device name -> { group, sphere, label }
   #created = 0;
 
   /** @param {THREE.Object3D} parent object whose local space is floorplan coordinates */
   constructor(parent) {
+    this.#parent = parent;
+  }
+
+  /** Re-parents every tracker, e.g. when the house model is rebuilt. */
+  moveTo(parent) {
+    for (const { group } of this.#trackers.values()) parent.add(group);
     this.#parent = parent;
   }
 
@@ -26,7 +32,9 @@ export class TrackerLayer {
 
     for (const [name, tracker] of this.#trackers) {
       if (!(name in snapshot)) {
-        this.#parent.remove(tracker.group); // also removes the label element
+        this.#parent.remove(tracker.group);
+        // CSS2DRenderer only cleans up a label removed directly, not one inside a removed group
+        tracker.label.element.remove();
         this.#trackers.delete(name);
       }
     }
@@ -54,7 +62,7 @@ export class TrackerLayer {
     group.add(sphere, label);
     this.#parent.add(group);
 
-    const tracker = { group, sphere };
+    const tracker = { group, sphere, label };
     this.#trackers.set(name, tracker);
     return tracker;
   }

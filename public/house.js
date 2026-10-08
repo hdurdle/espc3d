@@ -58,3 +58,13 @@ export function buildHouse(floors) {
 
   return { root, content, radius: bounds.getBoundingSphere(new THREE.Sphere()).radius };
 }
+
+/** Frees the GPU resources of a house from buildHouse. Move any trackers out of it first. */
+export function disposeHouse(house) {
+  house.root.traverse((object) => {
+    if (object.isLineSegments) {
+      object.geometry.dispose();
+      object.material.dispose();
+    }
+  });
+}
