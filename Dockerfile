@@ -1,18 +1,18 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
-
-RUN apk --no-cache add tar curl
+ENV NODE_ENV=production
 
 COPY package*.json ./
+RUN npm ci --omit=dev
 
-RUN npm install
-
-# Bundle app source
 COPY . .
 
+USER node
 EXPOSE 3001
 
-USER node
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+  CMD wget -qO- "http://localhost:${ESPC3D_PORT:-3001}/healthz" || exit 1
 
-CMD [ "npm", "start" ]
+# Run node directly so it receives SIGTERM from `docker stop`
+CMD ["node", "index.js"]

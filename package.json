@@ -1,20 +1,30 @@
 {
   "name": "espc3d",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "3D view of an ESPresense-companion floorplan with live device positions",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
-  "author": "",
-  "license": "ISC",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "author": "Howard Durdle",
+  "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.7",
-    "express": "^4.18.2",
-    "mqtt": "^5.3.5",
-    "three": "^0.161.0"
+    "express": "^5.2.1",
+    "mqtt": "^5.16.0",
+    "three": "^0.186.1"
   },
   "devDependencies": {
-    "vite": "^5.1.1"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9"
   }
 }
